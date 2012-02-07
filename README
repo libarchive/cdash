@@ -5,11 +5,11 @@ website.
 
 This is simple to do:  The CTest program (part of the CMake package)
 is a complete script interpreter that is capable of checking out
-source from SVN and driving a fresh build.  Using the scripts
+source from Git and driving a fresh build.  Using the scripts
 in this directory, you can quickly set up an automatic build
 and test of libarchive.
 
-Step 0:  Install cmake 2.6.3 or later on your system.
+Step 0:  Install cmake 2.8.0 or later on your system.
   You can use 'ctest --version' to check what version is installed.
 
 Step 1:  Customize libarchive_test.cmake for your system.

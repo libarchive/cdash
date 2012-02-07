@@ -5,18 +5,18 @@
 #
 # Put this script in a directory such as "~/Dashboards/Scripts" or
 # "c:/Dashboards/Scripts".  Create a file next to this script, say
-# 'libarchive_test.ctest', with code of the following form:
+# 'libarchive_test.cmake', with code of the following form:
 #
 #   # Client maintainer: me@mydomain.net
 #   set(CTEST_SITE "machine.site")
 #   set(CTEST_BUILD_NAME "Platform-Compiler")
 #   set(CTEST_BUILD_CONFIGURATION Debug)
 #   set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
-#   include(${CTEST_SCRIPT_DIRECTORY}/libarchive_common.ctest)
+#   include(${CTEST_SCRIPT_DIRECTORY}/libarchive_common.cmake)
 #
 # Then run a scheduled task (cron job) with a command line such as
 #
-#   ctest -S ~/Dashboards/Scripts/libarchive_test.ctest -V
+#   ctest -S ~/Dashboards/Scripts/libarchive_test.cmake -V
 #
 # By default the source and build trees will be placed in the path
 # "../My Tests/" relative to your script location.
@@ -28,9 +28,14 @@
 #   dashboard_cache       = Initial CMakeCache.txt file content
 #   dashboard_do_coverage = True to enable coverage (ex: gcov)
 #   dashboard_do_memcheck = True to enable memcheck (ex: valgrind)
-#   CTEST_SVN_COMMAND     = path to svn command-line client
+#   CTEST_GIT_COMMAND     = path to git command-line client
 #   CTEST_BUILD_FLAGS     = build tool arguments (ex: -j2)
 #   CTEST_DASHBOARD_ROOT  = Where to put source and build trees
+#
+# Options to configure builds from Git repository:
+#   dashboard_git_url      = Custom git clone url
+#   dashboard_git_branch   = Custom remote branch to track
+#   dashboard_git_crlf     = Value of core.autocrlf for repository
 #
 # For Makefile generators the script may be executed from an
 # environment already configured to use the desired compilers.
@@ -41,7 +46,7 @@
 #   set(ENV{FC}  /path/to/fc)   # Fortran compiler (optional)
 #   set(ENV{LD_LIBRARY_PATH} /path/to/vendor/lib) # (if necessary)
 
-cmake_minimum_required(VERSION 2.6.3 FATAL_ERROR)
+cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
 set(CTEST_PROJECT_NAME libarchive)
 
@@ -63,9 +68,19 @@ if(NOT DEFINED CTEST_BUILD_CONFIGURATION)
   set(CTEST_BUILD_CONFIGURATION Debug)
 endif()
 
-# Select svn source to use.
-if(NOT DEFINED dashboard_url)
-  set(dashboard_url "http://libarchive.googlecode.com/svn/trunk")
+# Select Git source to use.
+if(NOT DEFINED dashboard_git_url)
+  set(dashboard_git_url "https://github.com/libarchive/libarchive.git")
+endif()
+if(NOT DEFINED dashboard_git_branch)
+  set(dashboard_git_branch master)
+endif()
+if(NOT DEFINED dashboard_git_crlf)
+  if(UNIX)
+    set(dashboard_git_crlf false)
+  else(UNIX)
+    set(dashboard_git_crlf true)
+  endif(UNIX)
 endif()
 
 # Select a source directory name.
@@ -79,17 +94,64 @@ if(NOT DEFINED CTEST_BINARY_DIRECTORY)
 endif()
 make_directory(${CTEST_BINARY_DIRECTORY})
 
-# Look for a Subversion command-line client.
-if(NOT DEFINED CTEST_SVN_COMMAND)
-  find_program(CTEST_SVN_COMMAND svn)
+# Look for a Git command-line client.
+if(NOT DEFINED CTEST_GIT_COMMAND)
+  find_program(CTEST_GIT_COMMAND
+    NAMES git git.cmd
+    PATH_SUFFIXES Git/cmd Git/bin
+    )
+endif()
+
+# Delete source tree if it is incompatible with current VCS.
+if(EXISTS ${CTEST_SOURCE_DIRECTORY})
+  if(CTEST_GIT_COMMAND)
+    if(NOT EXISTS "${CTEST_SOURCE_DIRECTORY}/.git")
+      set(vcs_refresh "because it is not managed by git.")
+    else()
+      execute_process(
+        COMMAND ${CTEST_GIT_COMMAND} reset --hard
+        WORKING_DIRECTORY "${CTEST_SOURCE_DIRECTORY}"
+        OUTPUT_VARIABLE output
+        ERROR_VARIABLE output
+        RESULT_VARIABLE failed
+        )
+      if(failed)
+        set(vcs_refresh "because its .git may be corrupted.")
+      endif()
+    endif()
+  endif()
+  if(vcs_refresh AND "${CTEST_SOURCE_DIRECTORY}" MATCHES "/libarchive[^/]*")
+    message("Deleting source tree\n  ${CTEST_SOURCE_DIRECTORY}\n${vcs_refresh}")
+    file(REMOVE_RECURSE "${CTEST_SOURCE_DIRECTORY}")
+  endif()
 endif()
 
 # Support initial checkout if necessary.
 if(NOT EXISTS "${CTEST_SOURCE_DIRECTORY}"
     AND NOT DEFINED CTEST_CHECKOUT_COMMAND
-    AND CTEST_SVN_COMMAND)
+    AND CTEST_GIT_COMMAND)
   get_filename_component(_name "${CTEST_SOURCE_DIRECTORY}" NAME)
-  set(CTEST_CHECKOUT_COMMAND "\"${CTEST_SVN_COMMAND}\" co \"${dashboard_url}\" \"${_name}\"")
+
+  # Generate an initial checkout script.
+  set(ctest_checkout_script ${CTEST_DASHBOARD_ROOT}/${_name}-init.cmake)
+  file(WRITE ${ctest_checkout_script} "# git repo init script for ${_name}
+execute_process(
+  COMMAND \"${CTEST_GIT_COMMAND}\" clone -n -b ${dashboard_git_branch} -- \"${dashboard_git_url}\"
+          \"${CTEST_SOURCE_DIRECTORY}\"
+  )
+if(EXISTS \"${CTEST_SOURCE_DIRECTORY}/.git\")
+  execute_process(
+    COMMAND \"${CTEST_GIT_COMMAND}\" config core.autocrlf ${dashboard_git_crlf}
+    WORKING_DIRECTORY \"${CTEST_SOURCE_DIRECTORY}\"
+    )
+  execute_process(
+    COMMAND \"${CTEST_GIT_COMMAND}\" checkout
+    WORKING_DIRECTORY \"${CTEST_SOURCE_DIRECTORY}\"
+    )
+endif()
+")
+  set(CTEST_CHECKOUT_COMMAND "\"${CMAKE_COMMAND}\" -P \"${ctest_checkout_script}\"")
+
   # CTest delayed initialization is broken for non-Nightly modes so we
   # put the CTestConfig.cmake info here for use on first checkout.
   set(CTEST_NIGHTLY_START_TIME "01:00:00 UTC")
@@ -126,7 +188,7 @@ foreach(v
     CTEST_BINARY_DIRECTORY
     CTEST_CMAKE_GENERATOR
     CTEST_BUILD_CONFIGURATION
-    CTEST_SVN_COMMAND
+    CTEST_GIT_COMMAND
     CTEST_CHECKOUT_COMMAND
     CTEST_SCRIPT_DIRECTORY
     )
