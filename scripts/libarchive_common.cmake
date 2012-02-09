@@ -28,6 +28,8 @@
 #   dashboard_cache       = Initial CMakeCache.txt file content
 #   dashboard_do_coverage = True to enable coverage (ex: gcov)
 #   dashboard_do_memcheck = True to enable memcheck (ex: valgrind)
+#   dashboard_source_name = Name of source directory (libarchive)
+#   dashboard_binary_name = Name of binary directory (libarchive-build)
 #   CTEST_GIT_COMMAND     = path to git command-line client
 #   CTEST_BUILD_FLAGS     = build tool arguments (ex: -j2)
 #   CTEST_DASHBOARD_ROOT  = Where to put source and build trees
@@ -85,12 +87,20 @@ endif()
 
 # Select a source directory name.
 if(NOT DEFINED CTEST_SOURCE_DIRECTORY)
-  set(CTEST_SOURCE_DIRECTORY "${CTEST_DASHBOARD_ROOT}/libarchive")
+  if(DEFINED dashboard_source_name)
+    set(CTEST_SOURCE_DIRECTORY ${CTEST_DASHBOARD_ROOT}/${dashboard_source_name})
+  else()
+    set(CTEST_SOURCE_DIRECTORY ${CTEST_DASHBOARD_ROOT}/libarchive)
+  endif()
 endif()
 
 # Select a build directory name.
 if(NOT DEFINED CTEST_BINARY_DIRECTORY)
-  set(CTEST_BINARY_DIRECTORY ${CTEST_SOURCE_DIRECTORY}-${CTEST_BUILD_NAME})
+  if(DEFINED dashboard_binary_name)
+    set(CTEST_BINARY_DIRECTORY ${CTEST_DASHBOARD_ROOT}/${dashboard_binary_name})
+  else()
+    set(CTEST_BINARY_DIRECTORY ${CTEST_SOURCE_DIRECTORY}-build)
+  endif()
 endif()
 make_directory(${CTEST_BINARY_DIRECTORY})
 
