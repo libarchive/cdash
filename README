@@ -9,7 +9,7 @@ source from Git and driving a fresh build.  Using the scripts
 in this directory, you can quickly set up an automatic build
 and test of libarchive.
 
-Step 0:  Install cmake 2.8.0 or later on your system.
+Step 0:  Install cmake 2.8.12 or later on your system.
   You can use 'ctest --version' to check what version is installed.
 
 Step 1:  Customize libarchive_test.cmake for your system.
